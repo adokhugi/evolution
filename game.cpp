@@ -48,7 +48,7 @@ bool Game::Initialize (GL_Window* window, Keys* keys, DWORD tickCount)
   bitmap_titlescreen.GenerateTexture (texture_titlescreen);
   bitmap_gameover.GenerateTexture (texture_gameover);
   bitmap_gamecompleted.GenerateTexture (texture_gamecompleted);
-  for (i = 0; i < 20; i++)
+  for (i = 0; i < NUMBITMAPS; i++)
     bitmap [i].GenerateTexture (texture [i]);
 
   BASS_Init (-1, 44100, 0, NULL, NULL);
@@ -59,9 +59,16 @@ bool Game::Initialize (GL_Window* window, Keys* keys, DWORD tickCount)
   soundeffect [4] = BASS_StreamCreateFile (FALSE, "loselife.wav", 0, 0, 0);
   soundeffect [5] = BASS_StreamCreateFile (FALSE, "shoot.wav", 0, 0, 0);
 
+  gameState = TitlePicture;
+  for (i = 0; i < MAXNUMPLAYERS; i++)
+      player[0] = Player();
+  for (i = 0; i < MAXNUMBULLETS; i++)
+      bullet[i] = Bullet();
+  for (i = 0; i < MAXNUMPLATFORMS; i++)
+      platform[i] = Platform();
+
   srand (tickCount);
   spacePressed = false;
-  gameState = TitlePicture;
 
   return true;
 }
@@ -70,11 +77,14 @@ void Game::NewGame (DWORD tickCount)
 {
   NewGame_Sub (tickCount);
   glClearColor (0, 0, 0.3f, 1);
-  playerPosition.x = 20;
-  playerPosition.y = 200;
+  gameState = ActualGame;
+  player[0] = Player();
+  player[0].position.x = 20;
+  player[0].position.y = 200;
+  for (int i = 0; i < MAXNUMBULLETS; i++)
+      bullet[i] = Bullet();
   lives = 5;
   UpdateLives (true);
-  gameState = ActualGame;
 }
 
 void Game::EnterDinosaur (DWORD tickCount)
@@ -83,16 +93,21 @@ void Game::EnterDinosaur (DWORD tickCount)
 
   NewGame_Sub (tickCount);
   glClearColor (0, 0, 0.6f, 1);
-  for (i = 0; i < 10; i++)
+  gameState = ActualGame_Dinosaur;
+  for (i = 0; i < MINNUMPLATFORMS; i++)
   {
-    platformPosition [i].x = i * 64;
-    platformPosition [i].y = 0;
-    platformActive [i] = true;
+    platform[i] = Platform();
+    platform[i].position.x = i * 64;
+    platform[i].position.y = 0;
+    platform[i].active = true;
   }
-  for (; i < 15; i++)
-    platformActive [i] = false;
-  playerPosition.x = 20;
-  playerPosition.y = 16;
+  for (; i < MAXNUMPLATFORMS; i++)
+    platform[i].active = false;
+  player[0] = Player();
+  player[0].position.x = 20;
+  player[0].position.y = 16;
+  for (i = 0; i < MAXNUMBULLETS; i++)
+      bullet[i] = Bullet();
   dinosaurMoving = false;
   jumping = 0;
   falling = 0;
@@ -104,17 +119,16 @@ void Game::EnterDinosaur (DWORD tickCount)
   scrolling = false;
   upward = 0;
   lastVerticalMove = 0;
-  gameState = ActualGame_Dinosaur;
 }
 
 void Game::NewGame_Sub (DWORD tickCount)
 {
   int i;
 
-  for (i = 0; i < 10; i++)
-    bulletActive [i] = false;
-  for (i = 0; i < 20; i++)
-    enemyActive [i] = false;
+  for (i = 0; i < MAXNUMBULLETS; i++)
+    bullet[i].active = false;
+  for (i = 0; i < MAXNUMENEMIES; i++)
+    enemy[i].active = false;
   lastBulletMove = 0;
   keyPressedLeftRightSince = 0;
   keyPressedUpDownSince = 0;
@@ -216,8 +230,8 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       {
         keyPressedUpDown = true;
         keyPressedUpDownSince = tickCount;
-        if (playerPosition.y > 70)
-          playerPosition.y -= 3;
+        if (player[0].position.y > 70)
+          player[0].position.y -= 3;
       }
     }
     else if (g_keys->keyDown [VK_UP])
@@ -226,8 +240,8 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       {
         keyPressedUpDown = true;
         keyPressedUpDownSince = tickCount;
-        if (playerPosition.y < 416)
-          playerPosition.y += 3;
+        if (player[0].position.y < 416)
+          player[0].position.y += 3;
       }
     }
     else if (!g_keys->keyDown [VK_DOWN] && !g_keys->keyDown [VK_UP])
@@ -239,8 +253,8 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       {
         keyPressedLeftRight = true;
         keyPressedLeftRightSince = tickCount;
-        if (playerPosition.x > 2)
-          playerPosition.x -= 3;
+        if (player[0].position.x > 2)
+          player[0].position.x -= 3;
       }
     }
     else if (g_keys->keyDown [VK_RIGHT])
@@ -249,8 +263,8 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       {
         keyPressedLeftRight = true;
         keyPressedLeftRightSince = tickCount;
-        if (playerPosition.x < 400)
-          playerPosition.x += 3;
+        if (player[0].position.x < 400)
+          player[0].position.x += 3;
       }
     }
     else if (!g_keys->keyDown [VK_LEFT] && !g_keys->keyDown [VK_RIGHT])
@@ -262,12 +276,12 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       {
         spacePressed = true;
         spacePressedSince = tickCount;
-        for (i = 0; i < 10 && bulletActive [i]; i++);
-        if (i < 10)
+        for (i = 0; i < MAXNUMBULLETS && bullet[i].active; i++);
+        if (i < MAXNUMBULLETS)
         {
-          bulletPosition [i].x = playerPosition.x + 64;
-          bulletPosition [i].y = playerPosition.y;
-          bulletActive [i] = true;
+          bullet[i].position.x = player[0].position.x + 64;
+          bullet[i].position.y = player[0].position.y;
+          bullet[i].active = true;
           BASS_ChannelPlay (soundeffect [5], TRUE);
         }
       }
@@ -278,50 +292,50 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
     if (lastBulletMove + 5 < tickCount)
     {
       lastBulletMove = tickCount;
-      for (i = 0; i < 10; i++)
-        if (bulletActive [i])
+      for (i = 0; i < MAXNUMBULLETS; i++)
+        if (bullet[i].active)
         {
-          bulletPosition [i].x += 5;
-          if (bulletPosition [i].x >= 640)
-            bulletActive [i] = false;
+          bullet[i].position.x += 5;
+          if (bullet[i].position.x >= 640)
+            bullet[i].active = false;
         }
 
-      for (i = 0; i < 20; i++)
-        if (enemyActive [i])
+      for (i = 0; i < MAXNUMENEMIES; i++)
+        if (enemy[i].active)
         {
-          if (playerPosition.x + 64 >= enemy [i].position.x
-            && playerPosition.x <= enemy [i].position.x + enemy [i].width
-            && playerPosition.y + 32 >= enemy [i].position.y
-            && playerPosition.y <= enemy [i].position.y + enemy [i].height)
+          if (player[0].position.x + 64 >= enemy [i].position.x
+            && player[0].position.x <= enemy [i].position.x + enemy [i].size.width
+            && player[0].position.y + 32 >= enemy [i].position.y
+            && player[0].position.y <= enemy [i].position.y + enemy [i].size.height)
           {
             lives--;
             UpdateLives (false);
-            enemyActive [i] = false;
+            enemy[i].active = false;
             BASS_ChannelPlay (soundeffect [4], TRUE);
           }
 
-          for (j = 0; j < 10 && enemyActive [i]; j++)
-              if (bulletActive [j]
-                && bulletPosition [j].x + 64 >= enemy [i].position.x
-                && bulletPosition [j].x <= enemy [i].position.x + enemy [i].width
-                && bulletPosition [j].y + 32 >= enemy [i].position.y
-                && bulletPosition [j].y <= enemy [i].position.y + enemy [i].height)
+          for (j = 0; j < 10 && enemy[i].active; j++)
+              if (bullet[j].active
+                && bullet[j].position.x + 64 >= enemy [i].position.x
+                && bullet[j].position.x <= enemy [i].position.x + enemy [i].size.width
+                && bullet[j].position.y + 32 >= enemy [i].position.y
+                && bullet[j].position.y <= enemy [i].position.y + enemy [i].size.height)
               {
-                bulletActive [j] = false;
+                bullet[j].active = false;
 
                 if (enemy [i].type == Jellyfish || enemy [i].type == Kraken 
                   || enemy [i].type == EnemyBullet || enemy [i].type == CancerBullet)
                 {
                   BASS_ChannelPlay (soundeffect [2], TRUE);
-                  enemyActive [i] = false;
+                  enemy[i].active = false;
                 }
               }
 
-          if (enemyActive [i])
+          if (enemy[i].active)
           {
             enemy [i].position.x -= 3;
-            if (enemy [i].position.x < -enemy [i].width)
-              enemyActive [i] = false;
+            if (enemy [i].position.x < -enemy [i].size.width)
+              enemy[i].active = false;
             else
             {
               switch (enemy [i].type)
@@ -357,16 +371,17 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
                   enemy [i].variable [1] = tickCount;
                   if (rand () % 2)
                   {
-                    for (j = 0; j < 20 && enemyActive [j]; j++);
+                    for (j = 0; j < 20 && enemy[j].active; j++);
                     if (j < 20)
                     {
                       BASS_ChannelPlay (soundeffect [0], TRUE);
-                      enemy [j].type = EnemyBullet;
-                      enemy [j].width = 64;
-                      enemy [j].height = 32;
-                      enemy [j].position.x = enemy [i].position.x - 64 - 1;
-                      enemy [j].position.y = enemy [i].position.y + 48;
-                      enemyActive [j] = true;
+                      enemy[j].type = EnemyBullet;
+                      enemy[j].textureDefault = texture[2];
+                      enemy[j].size.width = 64;
+                      enemy[j].size.height = 32;
+                      enemy[j].position.x = enemy[i].position.x - 64 - 1;
+                      enemy[j].position.y = enemy[i].position.y + 48;
+                      enemy[j].active = true;
                     }
                   }
                 }
@@ -374,13 +389,13 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
 
               case EnemyBullet:
                 enemy [i].position.x -= 5;
-                for (j = 0; j < 20 && enemyActive [i]; j++)
-                  if (enemyActive [j] && j != i
-                    && enemy [i].position.x + enemy [i].width >= enemy [j].position.x
-                    && enemy [i].position.x <= enemy [j].position.x + enemy [j].width
-                    && enemy [i].position.y + enemy [i].height >= enemy [j].position.y
-                    && enemy [i].position.y <= enemy [j].position.y + enemy [j].height)
-                    enemyActive [i] = false;
+                for (j = 0; j < 20 && enemy[i].active; j++)
+                  if (enemy[j].active && j != i
+                    && enemy [i].position.x + enemy [i].size.width >= enemy [j].position.x
+                    && enemy [i].position.x <= enemy [j].position.x + enemy [j].size.width
+                    && enemy [i].position.y + enemy [i].size.height >= enemy [j].position.y
+                    && enemy [i].position.y <= enemy [j].position.y + enemy [j].size.height)
+                    enemy[i].active = false;
                 break;
 
               case Jellyfish:
@@ -408,15 +423,15 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
                   if (enemy [i].variable [0] == 0)
                   {
                     enemy [i].whereToGo.y = enemy [i].position.y - 100 - rand () % 200;
-                    if (enemy [i].whereToGo.y < enemy [i].height)
-                      enemy [i].whereToGo.y = enemy [i].height;
+                    if (enemy [i].whereToGo.y < enemy [i].size.height)
+                      enemy [i].whereToGo.y = enemy [i].size.height;
                     enemy [i].variable [0] = 1;
                   }
                   else
                   {
                     enemy [i].whereToGo.y = enemy [i].position.y + 100 - rand () % 200;
-                    if (enemy [i].whereToGo.y > 480 - enemy [i].height)
-                      enemy [i].whereToGo.y = 480 - enemy [i].height;
+                    if (enemy [i].whereToGo.y > 480 - enemy [i].size.height)
+                      enemy [i].whereToGo.y = 480 - enemy [i].size.height;
                     enemy [i].variable [0] = 0;
                   }
                 }
@@ -428,19 +443,20 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
                   enemy [i].variable [1] = tickCount;
                   if (rand () % 2)
                   {
-                    for (j = 0; j < 20 && enemyActive [j]; j++);
+                    for (j = 0; j < 20 && enemy[j].active; j++);
                     if (j < 20)
                     {
                       BASS_ChannelPlay (soundeffect [0], TRUE);
-                      enemy [j].type = CancerBullet;
-                      enemy [j].width = 32;
-                      enemy [j].height = 32;
-                      enemy [j].position.x = enemy [i].position.x + 48;
-                      enemy [j].position.y = enemy [i].position.y + 64 + 1;
-                      enemy [j].whereToGo.x = 1 + rand () % 3;
+                      enemy[j].type = CancerBullet;
+                      enemy[j].textureDefault = texture[4];
+                      enemy[j].size.width = 32;
+                      enemy [j].size.height = 32;
+                      enemy[j].position.x = enemy[i].position.x + 48;
+                      enemy[j].position.y = enemy[i].position.y + 64 + 1;
+                      enemy[j].whereToGo.x = 1 + rand () % 3;
                       if (rand () % 2)
-                        enemy [j].whereToGo.x = -enemy [j].whereToGo.x;
-                      enemyActive [j] = true;
+                        enemy[j].whereToGo.x = -enemy[j].whereToGo.x;
+                      enemy[j].active = true;
                     }
                   }
                 }
@@ -449,13 +465,13 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
               case CancerBullet:
                 enemy [i].position.x -= enemy [i].whereToGo.x;
                 enemy [i].position.y += 5;
-                for (j = 0; j < 20 && enemyActive [i]; j++)
-                  if (enemyActive [j] && j != i
-                    && enemy [i].position.x + enemy [i].width >= enemy [j].position.x
-                    && enemy [i].position.x <= enemy [j].position.x + enemy [j].width
-                    && enemy [i].position.y + enemy [i].height >= enemy [j].position.y
-                    && enemy [i].position.y <= enemy [j].position.y + enemy [j].height)
-                    enemyActive [i] = false;
+                for (j = 0; j < 20 && enemy[i].active; j++)
+                  if (enemy[j].active && j != i
+                    && enemy [i].position.x + enemy [i].size.width >= enemy [j].position.x
+                    && enemy [i].position.x <= enemy [j].position.x + enemy [j].size.width
+                    && enemy [i].position.y + enemy [i].size.height >= enemy [j].position.y
+                    && enemy [i].position.y <= enemy [j].position.y + enemy [j].size.height)
+                    enemy[i].active = false;
                 break;
 
               }
@@ -467,48 +483,52 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
     if ((lastEnemyAppeared + 3000 < tickCount)
       || (lastEnemyAppeared + 750 - (tickCount - startTime) / 1000 < tickCount && rand () % 2))
     {
-      for (i = 0; i < 20 && enemyActive [i]; i++);
-      if (i < 20)
+      for (i = 0; i < MAXNUMENEMIES && enemy[i].active; i++);
+      if (i < MAXNUMENEMIES)
       {
-        for (j = 0; j < 10; j++)
-          enemy [i].variable [j] = 0;
+        for (j = 0; j < MINNUMENEMIES; j++)
+          enemy[i].variable[j] = 0;
         switch (rand () % 10)
         {
         case 0:
         case 1:
-          enemy [i].type = Kraken;
-          enemy [i].width = 128;
-          enemy [i].height = 128;
-          enemy [i].position.y = 128 + rand () % (480 - 128 * 2);
+          enemy[i].type = Kraken;
+          enemy[i].textureDefault = texture[6];
+          enemy[i].size.width = 128;
+          enemy[i].size.height = 128;
+          enemy[i].position.y = 128 + rand () % (480 - 128 * 2);
           break;
 
         case 2:
         case 3:
         case 4:
-          enemy [i].type = Jellyfish;
-          enemy [i].width = 64;
-          enemy [i].height = 128;
-          enemy [i].position.y = 128 + rand () % (480 - 128 * 2);
-          enemy [i].variable [0] = rand () % 2;
+          enemy[i].type = Jellyfish;
+          enemy[i].textureDefault = texture[5];
+          enemy[i].size.width = 64;
+          enemy[i].size.height = 128;
+          enemy[i].position.y = 128 + rand () % (480 - 128 * 2);
+          enemy[i].variable [0] = rand () % 2;
           break;
 
         case 5:
-          enemy [i].type = Cancer;
-          enemy [i].width = 128;
-          enemy [i].height = 64;
-          enemy [i].position.y = 0;
+          enemy[i].type = Cancer;
+          enemy[i].textureDefault = texture[3];
+          enemy[i].size.width = 128;
+          enemy[i].size.height = 64;
+          enemy[i].position.y = 0;
           break;
 
         default:
-          enemy [i].type = Seastar;
-          enemy [i].width = 64;
-          enemy [i].height = 64;
-          enemy [i].position.y = 64 + rand () % (480 - 64 * 2);
+          enemy[i].type = Seastar;
+          enemy[i].textureDefault = texture[7];
+          enemy[i].size.width = 64;
+          enemy[i].size.height = 64;
+          enemy[i].position.y = 64 + rand () % (480 - 64 * 2);
           break;
         }
-        enemy [i].moving = false;
-        enemy [i].position.x = 640;
-        enemyActive [i] = true;
+        enemy[i].moving = false;
+        enemy[i].position.x = 640;
+        enemy[i].active = true;
         lastEnemyAppeared = tickCount;
       }
     }
@@ -528,7 +548,7 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       lastVerticalMove = tickCount;
       if (jumping)
       {
-        playerPosition.y += jumping;
+        player[0].position.y += jumping;
         jumping--;
         if (!jumping)
           falling = 1;
@@ -540,47 +560,47 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
         if (!falling)
           falling = 1;
 
-        for (i = 0; i < 15 && falling; i++)
-          if (platformActive [i] 
-            && platformPosition [i].x <= playerPosition.x + 64
-            && platformPosition [i].x + 64 >= playerPosition.x + 10
-            && platformPosition [i].y <= playerPosition.y + 80
-            && platformPosition [i].y + 16 >= playerPosition.y)
+        for (i = 0; i < MAXNUMPLATFORMS && falling; i++)
+          if (platform[i].active 
+            && platform[i].position.x <= player[0].position.x + 64
+            && platform[i].position.x + 64 >= player[0].position.x + 10
+            && platform[i].position.y <= player[0].position.y + 80
+            && platform[i].position.y + 16 >= player[0].position.y)
             {
-              playerPosition.y = platformPosition [i].y + 16;
+              player[0].position.y = platform[i].position.y + 16;
               falling = 0;
               keyPressedUpDown = false;
             }
 
         if (falling)
         {
-          if (playerPosition.y < -128)
+          if (player[0].position.y < -128)
           {
             int leftmost = 0;
             lives--;
             UpdateLives (false);
             BASS_ChannelPlay (soundeffect [4], TRUE);
-            for (i = 0; i < 15 && falling; i++)
+            for (i = 0; i < MAXNUMPLATFORMS && falling; i++)
             {
-              if (platformPosition [i].x > 0
-                && (platformPosition [i].x < platformPosition [leftmost].x
-                  || platformPosition [leftmost].x < 0))
+              if (platform[i].position.x > 0
+                && (platform[i].position.x < platform[leftmost].position.x
+                  || platform[leftmost].position.x < 0))
                 leftmost = i;
-              if (platformActive [i] 
-                && platformPosition [i].x <= playerPosition.x + 64
-                && platformPosition [i].x + 64 >= playerPosition.x + 10)
+              if (platform[i].active 
+                && platform[i].position.x <= player[0].position.x + 64
+                && platform[i].position.x + 64 >= player[0].position.x + 10)
                 {
-                  playerPosition.y = platformPosition [i].y + 16;
+                  player[0].position.y = platform[i].position.y + 16;
                   falling = 0;
                 }
             }
             if (falling)
             {
-              playerPosition.x = platformPosition [leftmost].x;
-              playerPosition.y = platformPosition [leftmost].y + 16;
+              player[0].position.x = platform[leftmost].position.x;
+              player[0].position.y = platform[leftmost].position.y + 16;
             }
           }
-          playerPosition.y -= falling;
+          player[0].position.y -= falling;
           falling++;
         }
       }
@@ -605,8 +625,8 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       {
         keyPressedLeftRight = true;
         keyPressedLeftRightSince = tickCount;
-        if (playerPosition.x > 2)
-          playerPosition.x -= 3;
+        if (player[0].position.x > 2)
+          player[0].position.x -= 3;
         if (movingswitchedSince + 60 < tickCount)
         {
           movingswitchedSince = tickCount;
@@ -621,20 +641,20 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       {
         keyPressedLeftRight = true;
         keyPressedLeftRightSince = tickCount;
-        if (playerPosition.x < 320)
-          playerPosition.x += 3;
+        if (player[0].position.x < 320)
+          player[0].position.x += 3;
         else
         {
           scrolling = true;
           j = 15;
-          for (i = 0; i < 15; i++)
+          for (i = 0; i < MAXNUMPLATFORMS; i++)
           {
-            if (platformActive [i])
+            if (platform[i].active)
             {
-              platformPosition [i].x -= 3;
-              if (platformPosition [i].x < -64)
+              platform[i].position.x -= 3;
+              if (platform[i].position.x < -64)
               {
-                platformActive [i] = false;
+                platform[i].active = false;
                 completed++;
               }
             }
@@ -648,19 +668,19 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
               gap = true;
             else
             {
-              platformPosition [j].x = platformPosition [rightmost].x + 64;
+              platform[j].position.x = platform[rightmost].position.x + 64;
               if (gap)
-                platformPosition [j].x += 100;
-              platformPosition [j].y = platformPosition [rightmost].y;
+                platform[j].position.x += 100;
+              platform[j].position.y = platform[rightmost].position.y;
               upward++;
               if (!(rand () % 4))
               {
                 int temp = rand () % 120 + 100;
                 if (rand () % 2)
                   temp = -temp;
-                while (platformPosition [j].y + temp < 0 || platformPosition [j].y + temp > 360)
+                while (platform[j].position.y + temp < 0 || platform[j].position.y + temp > 360)
                 {
-                  if (platformPosition [j].y - temp < 0 || platformPosition [j].y - temp > 360)
+                  if (platform[j].position.y - temp < 0 || platform[j].position.y - temp > 360)
                   {
                     temp /= 4;
                     temp *= 3;
@@ -670,9 +690,9 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
                 }
                 if (temp < 0)
                   upward = 0;
-                platformPosition [j].y += temp;
+                platform[j].position.y += temp;
               }
-              platformActive [j] = true;
+              platform[j].active = true;
               rightmost = j;
               gap = false;
             }
@@ -696,16 +716,16 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       {
         spacePressed = true;
         spacePressedSince = tickCount;
-        for (i = 0; i < 10 && bulletActive [i]; i++);
-        if (i < 10)
+        for (i = 0; i < MAXNUMBULLETS && bullet[i].active; i++);
+        if (i < MAXNUMBULLETS)
         {
           if (movingDirection)
-            bulletPosition [i].x = playerPosition.x + 64;
+            bullet[i].position.x = player[0].position.x + 64;
           else
-            bulletPosition [i].x = playerPosition.x - 32;
-          bulletPosition [i].y = playerPosition.y + 60;
-          bulletDirection [i] = movingDirection;
-          bulletActive [i] = true;
+            bullet[i].position.x = player[0].position.x - 32;
+          bullet[i].position.y = player[0].position.y + 60;
+          bullet[i].direction = movingDirection;
+          bullet[i].active = true;
           BASS_ChannelPlay (soundeffect [5], TRUE);
         }
       }
@@ -716,49 +736,49 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
     if (lastBulletMove + 5 < tickCount)
     {
       lastBulletMove = tickCount;
-      for (i = 0; i < 10; i++)
-        if (bulletActive [i])
+      for (i = 0; i < MAXNUMBULLETS; i++)
+        if (bullet[i].active)
         {
-          if (bulletDirection [i])
-            bulletPosition [i].x += 5;
+          if (bullet[i].direction)
+            bullet[i].position.x += 5;
           else
-            bulletPosition [i].x -= 5;
-          bulletPosition [i].y--;
-          if (bulletPosition [i].x >= 640 || bulletPosition [i].x < 0 || bulletPosition [i].y < 0)
-            bulletActive [i] = false;
+            bullet[i].position.x -= 5;
+          bullet[i].position.y--;
+          if (bullet[i].position.x >= 640 || bullet[i].position.x < 0 || bullet[i].position.y < 0)
+            bullet[i].active = false;
         }
 
-      for (i = 0; i < 20; i++)
-        if (enemyActive [i])
+      for (i = 0; i < MAXNUMENEMIES; i++)
+        if (enemy[i].active)
         {
-          if (playerPosition.x + 64 >= enemy [i].position.x
-            && playerPosition.x <= enemy [i].position.x + enemy [i].width
-            && playerPosition.y + 80 >= enemy [i].position.y
-            && playerPosition.y <= enemy [i].position.y + enemy [i].height)
+          if (player[0].position.x + 64 >= enemy [i].position.x
+            && player[0].position.x <= enemy [i].position.x + enemy [i].size.width
+            && player[0].position.y + 80 >= enemy [i].position.y
+            && player[0].position.y <= enemy [i].position.y + enemy [i].size.height)
           {
             lives--;
             UpdateLives (false);
-            enemyActive [i] = false;
+            enemy[i].active = false;
             BASS_ChannelPlay (soundeffect [4], TRUE);
           }
-          for (j = 0; j < 10 && enemyActive [i]; j++)
-              if (bulletActive [j]
-                && bulletPosition [j].x + 32 >= enemy [i].position.x
-                && bulletPosition [j].x <= enemy [i].position.x + enemy [i].width
-                && bulletPosition [j].y + 32 >= enemy [i].position.y
-                && bulletPosition [j].y <= enemy [i].position.y + enemy [i].height)
+          for (j = 0; j < 10 && enemy[i].active; j++)
+              if (bullet[j].active
+                && bullet[j].position.x + 32 >= enemy [i].position.x
+                && bullet[j].position.x <= enemy [i].position.x + enemy [i].size.width
+                && bullet[j].position.y + 32 >= enemy [i].position.y
+                && bullet[j].position.y <= enemy [i].position.y + enemy [i].size.height)
               {
                 BASS_ChannelPlay (soundeffect [2], TRUE);
-                bulletActive [j] = false;
-                enemyActive [i] = false;
+                bullet[j].active = false;
+                enemy[i].active = false;
               }
 
-          if (enemyActive [i])
+          if (enemy[i].active)
           {
             if (scrolling)
               enemy [i].position.x -= 3;
-            if (enemy [i].position.x < -enemy [i].width)
-              enemyActive [i] = false;
+            if (enemy [i].position.x < -enemy [i].size.width)
+              enemy[i].active = false;
             else
             {
               switch (enemy [i].type)
@@ -769,17 +789,18 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
                   enemy [i].variable [1] = tickCount;
                   if (rand () % 3)
                   {
-                    for (j = 0; j < 20 && enemyActive [j]; j++);
+                    for (j = 0; j < 20 && enemy[j].active; j++);
                     if (j < 20)
                     {
                       BASS_ChannelPlay (soundeffect [0], TRUE);
-                      enemy [j].type = EnemyBullet;
-                      enemy [j].width = 32;
-                      enemy [j].height = 32;
-                      enemy [j].position.x = enemy [i].position.x - 32;
-                      enemy [j].position.y = enemy [i].position.y + 80;
-                      enemy [j].whereToGo.y = 0;
-                      enemyActive [j] = true;
+                      enemy[j].type = EnemyBullet;
+                      enemy[j].textureDefault = texture[12];
+                      enemy[j].size.width = 32;
+                      enemy[j].size.height = 32;
+                      enemy[j].position.x = enemy[i].position.x - 32;
+                      enemy[j].position.y = enemy[i].position.y + 80;
+                      enemy[j].whereToGo.y = 0;
+                      enemy[j].active = true;
                     }
                   }
                 }
@@ -791,19 +812,20 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
                   enemy [i].variable [1] = tickCount;
                   if (rand () % 2)
                   {
-                    for (j = 0; j < 20 && enemyActive [j]; j++);
+                    for (j = 0; j < 20 && enemy[j].active; j++);
                     if (j < 20)
                     {
                       BASS_ChannelPlay (soundeffect [0], TRUE);
-                      enemy [j].type = EnemyBullet;
-                      enemy [j].width = 32;
-                      enemy [j].height = 32;
-                      enemy [j].position.x = enemy [i].position.x - 32;
-                      enemy [j].position.y = enemy [i].position.y + 80;
-                      enemy [j].whereToGo.y = 1 + rand () % 3;
+                      enemy[j].type = EnemyBullet;
+                      enemy[j].textureDefault = texture[12];
+                      enemy[j].size.width = 32;
+                      enemy[j].size.height = 32;
+                      enemy[j].position.x = enemy[i].position.x - 32;
+                      enemy[j].position.y = enemy[i].position.y + 80;
+                      enemy[j].whereToGo.y = 1 + rand () % 3;
                       if (rand () % 2)
-                        enemy [j].whereToGo.y = -enemy [j].whereToGo.y;
-                      enemyActive [j] = true;
+                        enemy[j].whereToGo.y = -enemy[j].whereToGo.y;
+                      enemy[j].active = true;
                     }
                   }
                 }
@@ -812,28 +834,28 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
               case EnemyBullet:
                 enemy [i].position.x -= 5;
                 enemy [i].position.y += enemy [i].whereToGo.y;
-                for (j = 0; j < 20 && enemyActive [i]; j++)
-                  if (enemyActive [j] && j != i
-                    && enemy [i].position.x + enemy [i].width >= enemy [j].position.x
-                    && enemy [i].position.x <= enemy [j].position.x + enemy [j].width
-                    && enemy [i].position.y + enemy [i].height >= enemy [j].position.y
-                    && enemy [i].position.y <= enemy [j].position.y + enemy [j].height)
-                    enemyActive [i] = false;
+                for (j = 0; j < 20 && enemy[i].active; j++)
+                  if (enemy[j].active && j != i
+                    && enemy [i].position.x + enemy [i].size.width >= enemy [j].position.x
+                    && enemy [i].position.x <= enemy [j].position.x + enemy [j].size.width
+                    && enemy [i].position.y + enemy [i].size.height >= enemy [j].position.y
+                    && enemy [i].position.y <= enemy [j].position.y + enemy [j].size.height)
+                    enemy[i].active = false;
                 break;
               }
             }
           }
         }
 
-        for (i = 0; i < 15; i++)
-          if (platformActive [i])
-            for (j = 0; j < 10; j++)
-              if (bulletActive [j]
-                && bulletPosition [j].x + 32 >= platformPosition [i].x
-                && bulletPosition [j].x <= platformPosition [i].x + 64
-                && bulletPosition [j].y + 32 >= platformPosition [i].y
-                && bulletPosition [j].y <= platformPosition [i].y + 16)
-                bulletActive [j] = false;
+        for (i = 0; i < MAXNUMPLATFORMS; i++)
+          if (platform[i].active)
+            for (j = 0; j < MAXNUMBULLETS; j++)
+              if (bullet[j].active
+                && bullet[j].position.x + 32 >= platform[i].position.x
+                && bullet[j].position.x <= platform[i].position.x + 64
+                && bullet[j].position.y + 32 >= platform[i].position.y
+                && bullet[j].position.y <= platform[i].position.y + 16)
+                bullet[j].active = false;
     }
 
     if (upward > 2
@@ -841,33 +863,35 @@ void Game::Update (DWORD tickCount, DWORD lastTickCount)
       && ((lastEnemyAppeared + 20 < completed)
       || (lastEnemyAppeared + 5 - completed / 100 < completed && rand () % 2)))
     {
-      for (i = 0; i < 20 && enemyActive [i]; i++);
-      if (i < 20)
+      for (i = 0; i < MAXNUMENEMIES && enemy[i].active; i++);
+      if (i < MAXNUMENEMIES)
       {
-        for (j = 0; j < 10; j++)
+        for (j = 0; j < MINNUMENEMIES; j++)
           enemy [i].variable [j] = 0;
         switch (rand () % 10)
         {
         case 0:
         case 1:
         case 2:
-          enemy [i].type = Lion;
-          enemy [i].width = 128;
-          enemy [i].height = 118;
-          enemy [i].position.x = platformPosition [rightmost].x;
-          enemy [i].position.y = platformPosition [rightmost].y + 16;
+          enemy[i].type = Lion;
+          enemy[i].textureDefault = texture[13];
+          enemy[i].size.width = 128;
+          enemy[i].size.height = 118;
+          enemy[i].position.x = platform[rightmost].position.x;
+          enemy[i].position.y = platform[rightmost].position.y + 16;
           break;
 
         default:
-          enemy [i].type = Worm;
-          enemy [i].width = 64;
-          enemy [i].height = 98;
-          enemy [i].position.x = platformPosition [rightmost].x;
-          enemy [i].position.y = platformPosition [rightmost].y + 16;
+          enemy[i].type = Worm;
+          enemy[i].textureDefault = texture[14];
+          enemy[i].size.width = 64;
+          enemy[i].size.height = 98;
+          enemy[i].position.x = platform[rightmost].position.x;
+          enemy[i].position.y = platform[rightmost].position.y + 16;
           break;
         }
-        enemy [i].moving = false;
-        enemyActive [i] = true;
+        enemy[i].moving = false;
+        enemy[i].active = true;
         lastEnemyAppeared = completed;
       }
     }
@@ -934,121 +958,43 @@ void Game::Draw (DWORD tickCount)
     glDisable (GL_TEXTURE_2D);
 
     glEnable (GL_TEXTURE_2D);
-    glBindTexture (GL_TEXTURE_2D, texture [0]);
+    glBindTexture (GL_TEXTURE_2D, player[0].textureDefault);
     glColor3f (1.0f, 1.0f, 1.0f);
     glBegin (GL_QUADS);
-      glTexCoord2f (0.0f, 0.0f); glVertex2f (playerPosition.x, playerPosition.y);
-      glTexCoord2f (1.0f, 0.0f); glVertex2f (playerPosition.x + 64, playerPosition.y);
-      glTexCoord2f (1.0f, 1.0f); glVertex2f (playerPosition.x + 64, playerPosition.y + 32);
-      glTexCoord2f (0.0f, 1.0f); glVertex2f (playerPosition.x, playerPosition.y + 32);
+      glTexCoord2f (0.0f, 0.0f); glVertex2f (player[0].position.x, player[0].position.y);
+      glTexCoord2f (1.0f, 0.0f); glVertex2f (player[0].position.x + player[0].size.width, player[0].position.y);
+      glTexCoord2f (1.0f, 1.0f); glVertex2f (player[0].position.x + player[0].size.width, player[0].position.y + player[0].size.height);
+      glTexCoord2f (0.0f, 1.0f); glVertex2f (player[0].position.x, player[0].position.y + player[0].size.height);
     glEnd ();
     glDisable (GL_TEXTURE_2D);
 
-    for (i = 0; i < 10; i++)
-      if (bulletActive [i])
+    for (i = 0; i < MAXNUMBULLETS; i++)
+      if (bullet[i].active)
       {
         glEnable (GL_TEXTURE_2D);
-        glBindTexture (GL_TEXTURE_2D, texture [1]);
+        glBindTexture (GL_TEXTURE_2D, bullet[i].textureDefault);
         glColor3f (1.0f, 1.0f, 1.0f);
         glBegin (GL_QUADS);
-          glTexCoord2f (0.0f, 0.0f); glVertex2f (bulletPosition [i].x, bulletPosition [i].y);
-          glTexCoord2f (1.0f, 0.0f); glVertex2f (bulletPosition [i].x + 64, bulletPosition [i].y);
-          glTexCoord2f (1.0f, 1.0f); glVertex2f (bulletPosition [i].x + 64, bulletPosition [i].y + 32);
-          glTexCoord2f (0.0f, 1.0f); glVertex2f (bulletPosition [i].x, bulletPosition [i].y + 32);
+          glTexCoord2f (0.0f, 0.0f); glVertex2f (bullet[i].position.x, bullet[i].position.y);
+          glTexCoord2f (1.0f, 0.0f); glVertex2f (bullet[i].position.x + bullet[i].size.width, bullet[i].position.y);
+          glTexCoord2f (1.0f, 1.0f); glVertex2f (bullet[i].position.x + bullet[i].size.width, bullet[i].position.y + bullet[i].size.height);
+          glTexCoord2f (0.0f, 1.0f); glVertex2f (bullet[i].position.x, bullet[i].position.y + bullet[i].size.height);
         glEnd ();
         glDisable (GL_TEXTURE_2D);
       }
 
-    for (i = 0; i < 20; i++)
-      if (enemyActive [i])
+    for (i = 0; i < MAXNUMENEMIES; i++)
+      if (enemy[i].active)
       {
         glEnable (GL_TEXTURE_2D);
-        switch (enemy [i].type)
-        {
-        case Kraken:
-          glBindTexture (GL_TEXTURE_2D, texture [6]);
-          break;
-
-        case Cancer:
-          glBindTexture (GL_TEXTURE_2D, texture [3]);
-          break;
-
-        case Seastar:
-          glBindTexture (GL_TEXTURE_2D, texture [7]);
-          break;
-
-        case Jellyfish:
-          glBindTexture (GL_TEXTURE_2D, texture [5]);
-          break;
-
-        case EnemyBullet:
-          glBindTexture (GL_TEXTURE_2D, texture [2]);
-          break;
-
-        case CancerBullet:
-          glBindTexture (GL_TEXTURE_2D, texture [4]);
-          break;
-        }
+        glBindTexture(GL_TEXTURE_2D, enemy[i].textureDefault);
         glColor3f (1.0f, 1.0f, 1.0f);
-        switch (enemy [i].type)
-        {
-        case Kraken:
-          glBegin (GL_QUADS);
-            glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-            glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 128, enemy [i].position.y);
-            glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 128, enemy [i].position.y 
-            + 128);
-            glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 128);
-          glEnd ();
-          break;
-
-        case Jellyfish:
-          glBegin (GL_QUADS);
-            glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-            glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 64, enemy [i].position.y);
-            glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 64, enemy [i].position.y 
-            + 128);
-            glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 128);
-          glEnd ();
-          break;
-
-        case Seastar:
-          glBegin (GL_QUADS);
-            glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-            glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 64, enemy [i].position.y);
-            glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 64, enemy [i].position.y + 64);
-            glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 64);
-          glEnd ();
-          break;
-
-        case Cancer:
-          glBegin (GL_QUADS);
-            glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-            glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 128, enemy [i].position.y);
-            glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 128, enemy [i].position.y 
-            + 64);
-            glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 64);
-          glEnd ();
-          break;
-
-        case EnemyBullet:
-          glBegin (GL_QUADS);
-            glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-            glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 64, enemy [i].position.y);
-            glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 64, enemy [i].position.y + 32);
-            glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 32);
-          glEnd ();
-          break;
-
-        case CancerBullet:
-          glBegin (GL_QUADS);
-            glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-            glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 32, enemy [i].position.y);
-            glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 32, enemy [i].position.y + 32);
-            glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 32);
-          glEnd ();
-          break;
-        }
+        glBegin (GL_QUADS);
+        glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
+        glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + enemy[i].size.width, enemy[i].position.y);
+        glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + enemy[i].size.width, enemy [i].position.y + enemy[i].size.height);
+        glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + enemy[i].size.height);
+        glEnd ();
         glDisable (GL_TEXTURE_2D);
       }
       break;
@@ -1067,110 +1013,60 @@ void Game::Draw (DWORD tickCount)
 
       glEnable (GL_TEXTURE_2D);
       if (dinosaurMoving)
-        glBindTexture (GL_TEXTURE_2D, texture [10]);
+        glBindTexture (GL_TEXTURE_2D, player[0].textureMoving);
       else
-        glBindTexture (GL_TEXTURE_2D, texture [9]);
+        glBindTexture (GL_TEXTURE_2D, player[0].textureDefault);
       glColor3f (1.0f, 1.0f, 1.0f);
       glBegin (GL_QUADS);
-        if (movingDirection)
-        {
-          glTexCoord2f (0.0f, 0.0f); glVertex2f (playerPosition.x, playerPosition.y);
-          glTexCoord2f (1.0f, 0.0f); glVertex2f (playerPosition.x + 64, playerPosition.y);
-          glTexCoord2f (1.0f, 1.0f); glVertex2f (playerPosition.x + 64, playerPosition.y + 128);
-          glTexCoord2f (0.0f, 1.0f); glVertex2f (playerPosition.x, playerPosition.y + 128);
-        }
-        else
-        {
-          glTexCoord2f (0.0f, 0.0f); glVertex2f (playerPosition.x + 64, playerPosition.y);
-          glTexCoord2f (1.0f, 0.0f); glVertex2f (playerPosition.x, playerPosition.y);
-          glTexCoord2f (1.0f, 1.0f); glVertex2f (playerPosition.x, playerPosition.y + 128);
-          glTexCoord2f (0.0f, 1.0f); glVertex2f (playerPosition.x + 64, playerPosition.y + 128);
-        }
+        glTexCoord2f (0.0f, 0.0f); glVertex2f (player[0].position.x, player[0].position.y);
+        glTexCoord2f (1.0f, 0.0f); glVertex2f (player[0].position.x + player[0].size.width, player[0].position.y);
+        glTexCoord2f (1.0f, 1.0f); glVertex2f (player[0].position.x + player[0].size.width, player[0].position.y + player[0].size.height);
+        glTexCoord2f (0.0f, 1.0f); glVertex2f (player[0].position.x, player[0].position.y + player[0].size.height);
       glEnd ();
       glDisable (GL_TEXTURE_2D);
 
-      for (i = 0; i < 15; i++)
-        if (platformActive [i])
+      for (i = 0; i < MAXNUMPLATFORMS; i++)
+        if (platform[i].active)
         {
           glEnable (GL_TEXTURE_2D);
-          glBindTexture (GL_TEXTURE_2D, texture [8]);
+          glBindTexture (GL_TEXTURE_2D, platform[i].textureDefault);
           glColor3f (1.0f, 1.0f, 1.0f);
           glBegin (GL_QUADS);
-            glTexCoord2f (0.0f, 0.0f); glVertex2f (platformPosition [i].x, platformPosition [i].y);
-            glTexCoord2f (1.0f, 0.0f); glVertex2f (platformPosition [i].x + 64, platformPosition [i].y);
-            glTexCoord2f (1.0f, 1.0f); glVertex2f (platformPosition [i].x + 64, platformPosition [i].y 
-            + 16);
-            glTexCoord2f (0.0f, 1.0f); glVertex2f (platformPosition [i].x, platformPosition [i].y + 16);
+            glTexCoord2f (0.0f, 0.0f); glVertex2f (platform[i].position.x, platform[i].position.y);
+            glTexCoord2f (1.0f, 0.0f); glVertex2f (platform[i].position.x + platform[i].size.width, platform[i].position.y);
+            glTexCoord2f (1.0f, 1.0f); glVertex2f (platform[i].position.x + platform[i].size.width, platform[i].position.y + platform[i].size.height);
+            glTexCoord2f (0.0f, 1.0f); glVertex2f (platform[i].position.x, platform[i].position.y + platform[i].size.height);
           glEnd ();
           glDisable (GL_TEXTURE_2D);
         }
 
-      for (i = 0; i < 10; i++)
-        if (bulletActive [i])
+      for (i = 0; i < MAXNUMBULLETS; i++)
+        if (bullet[i].active)
         {
           glEnable (GL_TEXTURE_2D);
-          glBindTexture (GL_TEXTURE_2D, texture [11]);
+          glBindTexture (GL_TEXTURE_2D, bullet[i].textureDefault);
           glColor3f (1.0f, 1.0f, 1.0f);
           glBegin (GL_QUADS);
-            glTexCoord2f (0.0f, 0.0f); glVertex2f (bulletPosition [i].x, bulletPosition [i].y);
-            glTexCoord2f (1.0f, 0.0f); glVertex2f (bulletPosition [i].x + 32, bulletPosition [i].y);
-            glTexCoord2f (1.0f, 1.0f); glVertex2f (bulletPosition [i].x + 32, bulletPosition [i].y + 32);
-            glTexCoord2f (0.0f, 1.0f); glVertex2f (bulletPosition [i].x, bulletPosition [i].y + 32);
+            glTexCoord2f (0.0f, 0.0f); glVertex2f (bullet[i].position.x, bullet[i].position.y);
+            glTexCoord2f (1.0f, 0.0f); glVertex2f (bullet[i].position.x + bullet[i].size.width, bullet[i].position.y);
+            glTexCoord2f (1.0f, 1.0f); glVertex2f (bullet[i].position.x + bullet[i].size.width, bullet[i].position.y + bullet[i].size.height);
+            glTexCoord2f (0.0f, 1.0f); glVertex2f (bullet[i].position.x, bullet[i].position.y + bullet[i].size.height);
           glEnd ();
           glDisable (GL_TEXTURE_2D);
         }
 
-      for (i = 0; i < 20; i++)
-        if (enemyActive [i])
+      for (i = 0; i < MAXNUMENEMIES; i++)
+        if (enemy[i].active)
         {
           glEnable (GL_TEXTURE_2D);
-          switch (enemy [i].type)
-          {
-          case Lion:
-            glBindTexture (GL_TEXTURE_2D, texture [13]);
-            break;
-
-          case Worm:
-            glBindTexture (GL_TEXTURE_2D, texture [14]);
-            break;
-
-          case EnemyBullet:
-            glBindTexture (GL_TEXTURE_2D, texture [12]);
-            break;
-          }
+          glBindTexture(GL_TEXTURE_2D, enemy[i].textureDefault);
           glColor3f (1.0f, 1.0f, 1.0f);
-          switch (enemy [i].type)
-          {
-          case Lion:
-            glBegin (GL_QUADS);
-              glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-              glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 128, enemy [i].position.y);
-              glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 128, enemy [i].position.y 
-              + 128);
-              glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 128);
-            glEnd ();
-            break;
-
-          case Worm:
-            glBegin (GL_QUADS);
-              glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-              glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 64, enemy [i].position.y);
-              glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 64, enemy [i].position.y 
-              + 128);
-              glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 128);
-            glEnd ();
-            break;
-
-          case EnemyBullet:
-            glBegin (GL_QUADS);
-              glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
-              glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + 32, enemy [i].position.y);
-              glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + 32, enemy [i].position.y 
-              + 32);
-              glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + 32);
-            glEnd ();
-            break;
-          }
+          glBegin (GL_QUADS);
+            glTexCoord2f (0.0f, 0.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y);
+            glTexCoord2f (1.0f, 0.0f); glVertex2f (enemy [i].position.x + enemy[i].size.width, enemy[i].position.y);
+            glTexCoord2f (1.0f, 1.0f); glVertex2f (enemy [i].position.x + enemy[i].size.width, enemy [i].position.y + enemy[i].size.height);
+            glTexCoord2f (0.0f, 1.0f); glVertex2f (enemy [i].position.x, enemy [i].position.y + enemy[i].size.height);
+          glEnd ();
         }
       break;
   }
